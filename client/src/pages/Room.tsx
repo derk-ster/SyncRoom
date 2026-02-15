@@ -41,9 +41,13 @@ export default function Room() {
   const [showRoomNamePlain, setShowRoomNamePlain] = useState(true)
   const [showRoomIdPlain, setShowRoomIdPlain] = useState(true)
   const [participantCount, setParticipantCount] = useState(0)
+  const [joinWaitSeconds, setJoinWaitSeconds] = useState(0)
   const shareStreamRef = useRef<MediaStream | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hasInitiallyJoined = useRef(false)
+  const joinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const joinWaitIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const joinOnConnectRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (copied === null) return
@@ -73,8 +77,35 @@ export default function Room() {
     }
 
     if (!isHost) {
+      setJoinError(null)
       hasInitiallyJoined.current = false
-      joinRoom(roomId, (ok, playback, name, count) => {
+      setJoinWaitSeconds(0)
+      const waitInterval = setInterval(() => {
+        setJoinWaitSeconds((s) => s + 1)
+      }, 1000)
+      joinWaitIntervalRef.current = waitInterval
+      const timeout = setTimeout(() => {
+        joinWaitIntervalRef.current && clearInterval(joinWaitIntervalRef.current)
+        joinWaitIntervalRef.current = null
+        setJoining((prev) => {
+          if (!prev) return prev
+          setJoinError('Connection timed out. Check the room ID and your connection, then try again.')
+          return false
+        })
+      }, 15000)
+      joinTimeoutRef.current = timeout
+      const clearJoinTimers = () => {
+        if (joinTimeoutRef.current) {
+          clearTimeout(joinTimeoutRef.current)
+          joinTimeoutRef.current = null
+        }
+        if (joinWaitIntervalRef.current) {
+          clearInterval(joinWaitIntervalRef.current)
+          joinWaitIntervalRef.current = null
+        }
+      }
+      const onJoined = (ok: boolean, playback?: { playing: boolean; currentTime: number; serverTime: number }, name?: string, count?: number) => {
+        clearJoinTimers()
         setJoining(false)
         hasInitiallyJoined.current = true
         if (!ok) {
@@ -87,7 +118,15 @@ export default function Room() {
         if (playback) {
           setPlayback(playback.playing, playback.currentTime, playback.serverTime)
         }
-      })
+      }
+      const doJoin = () => joinRoom(roomId, onJoined)
+      joinOnConnectRef.current = doJoin
+      const socket = getSocket()
+      if (socket?.connected) {
+        doJoin()
+      } else {
+        socket?.once('connect', doJoin)
+      }
     }
 
     const socket = getSocket()
@@ -104,6 +143,18 @@ export default function Room() {
 
     return () => {
       socket?.off('connect', onReconnect)
+      if (joinOnConnectRef.current) {
+        socket?.off('connect', joinOnConnectRef.current)
+        joinOnConnectRef.current = null
+      }
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current)
+        joinTimeoutRef.current = null
+      }
+      if (joinWaitIntervalRef.current) {
+        clearInterval(joinWaitIntervalRef.current)
+        joinWaitIntervalRef.current = null
+      }
       if (roomId && roomId !== 'create') socketLeaveRoom(roomId)
       leaveRoom()
     }
@@ -242,6 +293,9 @@ export default function Room() {
       video.srcObject = stream
       video.src = ''
       setIsSharing(true)
+      await video.play()
+      setPlayback(true, 0, Date.now())
+      emitPlay(0)
     } catch (err) {
       console.error('Share screen failed:', err)
     }
@@ -315,8 +369,36 @@ export default function Room() {
 
   if (joining) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-sync-bg">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-sync-bg gap-6 p-6">
         <LoadingSkeleton />
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Estimated wait: usually 2–5 seconds
+        </p>
+        <p className="text-xs text-[var(--color-text-muted)]">
+          {joinWaitSeconds > 0 && `Waiting… ${joinWaitSeconds}s`}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (joinTimeoutRef.current) {
+              clearTimeout(joinTimeoutRef.current)
+              joinTimeoutRef.current = null
+            }
+            if (joinWaitIntervalRef.current) {
+              clearInterval(joinWaitIntervalRef.current)
+              joinWaitIntervalRef.current = null
+            }
+            if (joinOnConnectRef.current) {
+              getSocket()?.off('connect', joinOnConnectRef.current)
+              joinOnConnectRef.current = null
+            }
+            setJoining(false)
+            navigate('/')
+          }}
+          className="text-sm px-4 py-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5 transition-colors"
+        >
+          Cancel
+        </button>
       </div>
     )
   }

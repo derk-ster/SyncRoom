@@ -1,8 +1,18 @@
 import { useNavigate } from 'react-router-dom'
-import { useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { MouseLight } from '@/components/effects/MouseLight'
 import { useParticleBurst } from '@/components/effects/ParticleBurst'
 import { GradientBorderCard } from '@/components/ui/GradientBorderCard'
+
+/** Format room ID with a dash every 4 alphanumeric chars (XXXX-XXXX-XXXX-XXXX). */
+function formatRoomIdInput(raw: string): string {
+  const alphanumeric = raw.replace(/\W/g, '').slice(0, 16)
+  const parts: string[] = []
+  for (let i = 0; i < alphanumeric.length; i += 4) {
+    parts.push(alphanumeric.slice(i, i + 4))
+  }
+  return parts.join('-')
+}
 
 /**
  * Landing page: Create Room and Join Room.
@@ -10,7 +20,7 @@ import { GradientBorderCard } from '@/components/ui/GradientBorderCard'
  */
 export default function Landing() {
   const navigate = useNavigate()
-  const roomIdInputRef = useRef<HTMLInputElement>(null)
+  const [roomIdInput, setRoomIdInput] = useState('')
   const { canvasRef, burst } = useParticleBurst()
 
   useEffect(() => {
@@ -30,8 +40,12 @@ export default function Landing() {
     navigate('/room/create?host=1')
   }
 
+  const handleRoomIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRoomIdInput(formatRoomIdInput(e.target.value))
+  }
+
   const handleJoinRoom = (e?: React.MouseEvent) => {
-    const value = roomIdInputRef.current?.value?.trim()
+    const value = roomIdInput.trim()
     if (!value) return
     if (e) burst(e.clientX, e.clientY)
     navigate(`/room/${value}`)
@@ -96,10 +110,12 @@ export default function Landing() {
             </p>
             <div className="flex gap-4 flex-wrap">
               <input
-                ref={roomIdInputRef}
                 type="text"
-                placeholder="Room ID"
-                className="flex-1 min-w-[160px] px-4 py-3 rounded-xl bg-black/30 border border-[var(--color-surface-border)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors"
+                value={roomIdInput}
+                onChange={handleRoomIdChange}
+                placeholder="XXXX-XXXX-XXXX-XXXX"
+                maxLength={19}
+                className="flex-1 min-w-[160px] px-4 py-3 rounded-xl bg-black/30 border border-[var(--color-surface-border)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors font-mono tracking-wider"
                 onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
               />
               <button
