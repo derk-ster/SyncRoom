@@ -173,6 +173,8 @@ export default function Room() {
     }
 
     const onDriftCorrection = (payload: { playing: boolean; currentTime: number; serverTime: number }) => {
+      // Host is source of truth — ignore drift correction to avoid bar jumping back (server only has last play/pause/seek time)
+      if (isHost) return
       setPlayback(payload.playing, payload.currentTime, payload.serverTime)
     }
     const onHostChanged = (payload: { newHostSocketId: string }) => {
@@ -202,7 +204,7 @@ export default function Room() {
       socket.off('room-name-changed', onRoomNameChanged)
       socket.off('room-participants', onRoomParticipants)
     }
-  }, [roomId, playing, setPlayback, setHost, setRoomName])
+  }, [roomId, playing, isHost, setPlayback, setHost, setRoomName])
 
   const handlePlayPause = () => {
     const video = videoRef.current
@@ -343,7 +345,7 @@ export default function Room() {
       />
 
       <header className="flex items-center justify-between p-4 border-b border-white/10 flex-wrap gap-3">
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap shrink-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[var(--color-text)]">Room:</span>
             {editingRoomName ? (
@@ -390,40 +392,40 @@ export default function Room() {
               {copied === 'link' ? 'Copied!' : 'Copy room link'}
             </motion.button>
           )}
-          <div className="flex flex-col items-center gap-0.5">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setShowRoomNamePlain((v) => !v)}
-                className="p-1.5 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
-                title={showRoomNamePlain ? 'Hide room name' : 'Show room name'}
-              >
-                {showRoomNamePlain ? (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowRoomIdPlain((v) => !v)}
-                className="p-1.5 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
-                title={showRoomIdPlain ? 'Hide room ID' : 'Show room ID'}
-              >
-                {showRoomIdPlain ? (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                )}
-              </button>
-            </div>
-            <span className="text-xs text-[var(--color-text-muted)]">
-              {participantCount === 1 ? '1 person' : `${participantCount} people`} in room
-            </span>
-          </div>
           {!connected && <span className="text-xs text-amber-400">Reconnecting…</span>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 shrink">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowRoomNamePlain((v) => !v)}
+              className="p-1.5 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+              title={showRoomNamePlain ? 'Hide room name' : 'Show room name'}
+            >
+              {showRoomNamePlain ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRoomIdPlain((v) => !v)}
+              className="p-1.5 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+              title={showRoomIdPlain ? 'Hide room ID' : 'Show room ID'}
+            >
+              {showRoomIdPlain ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+              )}
+            </button>
+          </div>
+          <span className="text-xs text-[var(--color-text-muted)]">
+            {participantCount === 1 ? '1 person' : `${participantCount} people`} in room
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <span className="text-sm font-medium text-[var(--color-text)] tabular-nums min-w-[8ch]">
             {showRoomIdPlain ? (roomId ?? '') : maskText(roomId ?? '')}
           </span>
@@ -536,15 +538,29 @@ export default function Room() {
                     </div>
                   </div>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={duration > 0 ? duration : 3600}
-                  step={0.1}
-                  value={Math.min(currentTime, duration > 0 ? duration : 3600)}
-                  onChange={handleSeek}
-                  className="w-full h-2 rounded-full appearance-none bg-white/10 accent-[#6366f1]"
-                />
+                {(() => {
+                  const max = duration > 0 ? duration : 3600
+                  const value = Math.min(currentTime, max)
+                  const seekPercent = max > 0 ? (value / max) * 100 : 0
+                  return (
+                    <div className="relative w-full h-2 rounded-full bg-white/10">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-l-full bg-[#6366f1] transition-[width] duration-100"
+                        style={{ width: `${seekPercent}%` }}
+                        aria-hidden
+                      />
+                      <input
+                        type="range"
+                        min={0}
+                        max={max}
+                        step={0.1}
+                        value={value}
+                        onChange={handleSeek}
+                        className="absolute inset-0 w-full h-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-10 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#6366f1] [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[#6366f1]"
+                      />
+                    </div>
+                  )
+                })()}
               </>
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-4">
