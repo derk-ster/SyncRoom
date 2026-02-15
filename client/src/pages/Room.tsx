@@ -279,7 +279,7 @@ export default function Room() {
     setVolume(v)
   }
 
-  const displayRoomName = roomName.trim() || roomId
+  const displayRoomName = (roomName.trim() || roomId) ?? ''
 
   const startEditingRoomName = () => {
     if (!isHost) return
