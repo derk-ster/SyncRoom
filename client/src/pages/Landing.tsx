@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { MouseLight } from '@/components/effects/MouseLight'
 import { useParticleBurst } from '@/components/effects/ParticleBurst'
 import { GradientBorderCard } from '@/components/ui/GradientBorderCard'
