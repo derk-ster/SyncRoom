@@ -33,15 +33,24 @@
 1. **Import project**
    - Vercel → Add New → Project → Import your repo.
 
-2. **Configure**
-   - **Root Directory:** `client` (required — otherwise you get 404)
-   - **Framework Preset:** Vite
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-   - **Environment variable:**
-     - `VITE_API_URL` = your Render backend URL (e.g. `https://syncroom-api.onrender.com`)
+2. **Configure (choose one):**
 
-   The repo includes `client/vercel.json` so all routes (e.g. `/room/:id`) rewrite to `index.html` for the SPA. If you still see 404, confirm **Root Directory** is set to `client` in Vercel → Project → Settings → General.
+   **Option A — Root Directory = `client` (recommended)**  
+   - **Root Directory:** `client`  
+   - **Framework Preset:** Vite  
+   - **Build Command:** `npm run build`  
+   - **Output Directory:** `dist`  
+   - `client/vercel.json` provides SPA rewrites.
+
+   **Option B — Root Directory = empty (repo root)**  
+   - **Root Directory:** leave empty  
+   - Root `vercel.json` and `package.json` build the client and set SPA rewrites automatically.  
+   - **Build Command** and **Output Directory** can stay default (overridden by root `vercel.json`).
+
+   **Environment variable (either option):**
+   - `VITE_API_URL` = your Render backend URL (e.g. `https://syncroom-api.onrender.com`)
+
+   If you see 404, try Option B: in Vercel → Project → Settings → General, clear **Root Directory** so the repo root is used, then redeploy.
 
 3. **Deploy**
    - Deploy. Your app will be at `https://<project>.vercel.app`.

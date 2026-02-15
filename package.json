@@ -1,0 +1,9 @@
+{
+  "name": "syncroom",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Real-time watch sync — frontend in client/",
+  "scripts": {
+    "build": "cd client && npm install && npm run build"
+  }
+}
