@@ -4,7 +4,7 @@
  */
 
 import type { Server, Socket } from 'socket.io'
-import { v4 as uuidv4 } from 'uuid'
+import { generateSimpleRoomId } from '../lib/roomId.js'
 import {
   createRoom,
   getRoom,
@@ -17,16 +17,25 @@ import {
 } from './rooms.js'
 import type { PlaybackState } from '../types.js'
 
+function emitRoomParticipants(io: Server, roomId: string): void {
+  const room = getRoom(roomId)
+  if (room) {
+    const count = room.guestSocketIds.size + 1
+    io.to(roomId).emit('room-participants', { count })
+  }
+}
+
 export function registerSocketHandlers(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    socket.on('create-room', (callback?: (roomId: string) => void) => {
-      const roomId = uuidv4()
+    socket.on('create-room', (callback?: (roomId: string, participantCount?: number) => void) => {
+      const roomId = generateSimpleRoomId()
       createRoom(roomId, socket.id)
       socket.join(roomId)
-      if (typeof callback === 'function') callback(roomId)
+      if (typeof callback === 'function') callback(roomId, 1)
+      emitRoomParticipants(io, roomId)
     })
 
-    socket.on('join-room', (roomId: string, callback?: (ok: boolean, state?: PlaybackState, roomName?: string) => void) => {
+    socket.on('join-room', (roomId: string, callback?: (ok: boolean, state?: PlaybackState, roomName?: string, participantCount?: number) => void) => {
       const room = getRoom(roomId)
       if (!room) {
         if (typeof callback === 'function') callback(false)
@@ -34,7 +43,9 @@ export function registerSocketHandlers(io: Server): void {
       }
       joinRoom(roomId, socket.id)
       socket.join(roomId)
-      if (typeof callback === 'function') callback(true, room.playback, room.roomName)
+      const count = room.guestSocketIds.size + 1
+      if (typeof callback === 'function') callback(true, room.playback, room.roomName, count)
+      emitRoomParticipants(io, roomId)
     })
 
     socket.on('leave-room', (roomId: string) => {
@@ -42,6 +53,7 @@ export function registerSocketHandlers(io: Server): void {
       socket.leave(roomId)
       if (room) {
         io.to(roomId).emit('user-left', { socketId: socket.id })
+        emitRoomParticipants(io, roomId)
       }
     })
 
@@ -99,6 +111,7 @@ export function registerSocketHandlers(io: Server): void {
           }
         }
         io.to(roomId).emit('user-left', { socketId: socket.id })
+        emitRoomParticipants(io, roomId)
       }
     })
   })

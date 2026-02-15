@@ -16,18 +16,18 @@ export function useSocket() {
 
   const socket = getSocket()
 
-  const createRoom = useCallback((onCreated: (roomId: string) => void) => {
+  const createRoom = useCallback((onCreated: (roomId: string, participantCount?: number) => void) => {
     const s = getSocket()
     if (!s) return
-    s.emit('create-room', (roomId: string) => onCreated(roomId))
+    s.emit('create-room', (roomId: string, count?: number) => onCreated(roomId, count))
   }, [])
 
   const joinRoom = useCallback(
-    (roomId: string, onJoined: (ok: boolean, playback?: { playing: boolean; currentTime: number; serverTime: number }, roomName?: string) => void) => {
+    (roomId: string, onJoined: (ok: boolean, playback?: { playing: boolean; currentTime: number; serverTime: number }, roomName?: string, participantCount?: number) => void) => {
       const s = getSocket()
       if (!s) return
-      s.emit('join-room', roomId, (ok: boolean, state?: { playing: boolean; currentTime: number; lastSyncAt: number; serverTime: number }, roomName?: string) => {
-        if (ok && state) onJoined(true, { playing: state.playing, currentTime: state.currentTime, serverTime: state.serverTime }, roomName)
+      s.emit('join-room', roomId, (ok: boolean, state?: { playing: boolean; currentTime: number; lastSyncAt: number; serverTime: number }, roomName?: string, count?: number) => {
+        if (ok && state) onJoined(true, { playing: state.playing, currentTime: state.currentTime, serverTime: state.serverTime }, roomName, count)
         else onJoined(ok)
       })
     },

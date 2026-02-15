@@ -38,6 +38,9 @@ export default function Room() {
   const [volume, setVolume] = useState(1)
   const [editingRoomName, setEditingRoomName] = useState(false)
   const [roomNameInput, setRoomNameInput] = useState('')
+  const [showRoomNamePlain, setShowRoomNamePlain] = useState(true)
+  const [showRoomIdPlain, setShowRoomIdPlain] = useState(true)
+  const [participantCount, setParticipantCount] = useState(0)
   const shareStreamRef = useRef<MediaStream | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hasInitiallyJoined = useRef(false)
@@ -53,8 +56,9 @@ export default function Room() {
     if (!roomId) return
 
     if (isHost && roomId === 'create') {
-      createRoom((newRoomId) => {
+      createRoom((newRoomId, count) => {
         setRoom(newRoomId, true)
+        if (count != null) setParticipantCount(count)
         setJoining(false)
         navigate(`/room/${newRoomId}?host=1`, { replace: true })
       })
@@ -70,7 +74,7 @@ export default function Room() {
 
     if (!isHost) {
       hasInitiallyJoined.current = false
-      joinRoom(roomId, (ok, playback, name) => {
+      joinRoom(roomId, (ok, playback, name, count) => {
         setJoining(false)
         hasInitiallyJoined.current = true
         if (!ok) {
@@ -79,6 +83,7 @@ export default function Room() {
         }
         setRoom(roomId, false)
         if (name !== undefined) setRoomName(name ?? '')
+        if (count != null) setParticipantCount(count)
         if (playback) {
           setPlayback(playback.playing, playback.currentTime, playback.serverTime)
         }
@@ -88,10 +93,11 @@ export default function Room() {
     const socket = getSocket()
     const onReconnect = () => {
       if (!roomId || roomId === 'create' || !hasInitiallyJoined.current) return
-      joinRoom(roomId, (ok, playback) => {
+      joinRoom(roomId, (ok, playback, _name, count) => {
         if (ok && playback) {
           setPlayback(playback.playing, playback.currentTime, playback.serverTime)
         }
+        if (count != null) setParticipantCount(count)
       })
     }
     socket?.on('connect', onReconnect)
@@ -175,6 +181,9 @@ export default function Room() {
     const onRoomNameChanged = (payload: { roomName: string }) => {
       setRoomName(payload.roomName)
     }
+    const onRoomParticipants = (payload: { count: number }) => {
+      setParticipantCount(payload.count)
+    }
 
     socket.on('play', onPlay)
     socket.on('pause', onPause)
@@ -182,6 +191,7 @@ export default function Room() {
     socket.on('drift-correction', onDriftCorrection)
     socket.on('host-changed', onHostChanged)
     socket.on('room-name-changed', onRoomNameChanged)
+    socket.on('room-participants', onRoomParticipants)
 
     return () => {
       socket.off('play', onPlay)
@@ -190,6 +200,7 @@ export default function Room() {
       socket.off('drift-correction', onDriftCorrection)
       socket.off('host-changed', onHostChanged)
       socket.off('room-name-changed', onRoomNameChanged)
+      socket.off('room-participants', onRoomParticipants)
     }
   }, [roomId, playing, setPlayback, setHost, setRoomName])
 
@@ -281,6 +292,8 @@ export default function Room() {
 
   const displayRoomName = (roomName.trim() || roomId) ?? ''
 
+  const maskText = (text: string) => text.replace(/./g, '•')
+
   const startEditingRoomName = () => {
     if (!isHost) return
     setRoomNameInput(displayRoomName)
@@ -329,7 +342,7 @@ export default function Room() {
         }}
       />
 
-      <header className="flex items-center justify-between p-4 border-b border-white/10">
+      <header className="flex items-center justify-between p-4 border-b border-white/10 flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[var(--color-text)]">Room:</span>
@@ -353,10 +366,10 @@ export default function Room() {
                 onClick={startEditingRoomName}
                 onDoubleClick={startEditingRoomName}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') startEditingRoomName() }}
-                className={`font-semibold text-[var(--color-text)] ${isHost ? 'cursor-pointer hover:underline focus:outline-none focus:underline' : ''}`}
+                className={`font-semibold text-[var(--color-text)] tabular-nums ${isHost ? 'cursor-pointer hover:underline focus:outline-none focus:underline' : ''}`}
                 title={isHost ? 'Click or double-click to rename' : undefined}
               >
-                {displayRoomName}
+                {showRoomNamePlain ? displayRoomName : maskText(displayRoomName)}
               </span>
             )}
           </div>
@@ -364,41 +377,75 @@ export default function Room() {
             {isHost ? 'Host' : 'Guest'}
           </span>
           {isHost && (
-            <>
-              <motion.button
-                type="button"
-                onClick={() => {
-                  const url = `${window.location.origin}/room/${roomId}`
-                  navigator.clipboard.writeText(url).then(() => setCopied('link'))
-                }}
-                whileTap={{ scale: 0.92 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
-              >
-                {copied === 'link' ? 'Copied!' : 'Copy room link'}
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={() => {
-                  if (roomId) navigator.clipboard.writeText(roomId).then(() => setCopied('id'))
-                }}
-                whileTap={{ scale: 0.92 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
-              >
-                {copied === 'id' ? 'Copied!' : 'Copy room ID'}
-              </motion.button>
-            </>
+            <motion.button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/room/${roomId}`
+                navigator.clipboard.writeText(url).then(() => setCopied('link'))
+              }}
+              whileTap={{ scale: 0.92 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+            >
+              {copied === 'link' ? 'Copied!' : 'Copy room link'}
+            </motion.button>
           )}
+          <div className="flex flex-col items-center gap-0.5">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowRoomNamePlain((v) => !v)}
+                className="p-1.5 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+                title={showRoomNamePlain ? 'Hide room name' : 'Show room name'}
+              >
+                {showRoomNamePlain ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRoomIdPlain((v) => !v)}
+                className="p-1.5 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+                title={showRoomIdPlain ? 'Hide room ID' : 'Show room ID'}
+              >
+                {showRoomIdPlain ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                )}
+              </button>
+            </div>
+            <span className="text-xs text-[var(--color-text-muted)]">
+              {participantCount === 1 ? '1 person' : `${participantCount} people`} in room
+            </span>
+          </div>
           {!connected && <span className="text-xs text-amber-400">Reconnecting…</span>}
         </div>
-        <button
-          type="button"
-          onClick={handleLeave}
-          className="text-sm px-4 py-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5 transition-colors"
-        >
-          Leave
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[var(--color-text)] tabular-nums min-w-[8ch]">
+            {showRoomIdPlain ? (roomId ?? '') : maskText(roomId ?? '')}
+          </span>
+          <motion.button
+            type="button"
+            onClick={() => {
+              if (roomId) navigator.clipboard.writeText(roomId).then(() => setCopied('id'))
+            }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+            className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+          >
+            {copied === 'id' ? 'Copied!' : 'Copy room ID'}
+          </motion.button>
+          <button
+            type="button"
+            onClick={handleLeave}
+            className="text-sm px-4 py-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5 transition-colors"
+          >
+            Leave
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-6">
