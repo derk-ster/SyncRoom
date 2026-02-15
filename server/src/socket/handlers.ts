@@ -12,6 +12,7 @@ import {
   leaveRoom,
   removeSocketFromAllRooms,
   setRoomPlayback,
+  setRoomName,
   promoteGuestToHost,
 } from './rooms.js'
 import type { PlaybackState } from '../types.js'
@@ -25,7 +26,7 @@ export function registerSocketHandlers(io: Server): void {
       if (typeof callback === 'function') callback(roomId)
     })
 
-    socket.on('join-room', (roomId: string, callback?: (ok: boolean, state?: PlaybackState) => void) => {
+    socket.on('join-room', (roomId: string, callback?: (ok: boolean, state?: PlaybackState, roomName?: string) => void) => {
       const room = getRoom(roomId)
       if (!room) {
         if (typeof callback === 'function') callback(false)
@@ -33,7 +34,7 @@ export function registerSocketHandlers(io: Server): void {
       }
       joinRoom(roomId, socket.id)
       socket.join(roomId)
-      if (typeof callback === 'function') callback(true, room.playback)
+      if (typeof callback === 'function') callback(true, room.playback, room.roomName)
     })
 
     socket.on('leave-room', (roomId: string) => {
@@ -77,6 +78,13 @@ export function registerSocketHandlers(io: Server): void {
         setRoomPlayback(roomId, { currentTime, lastSyncAt: st, serverTime: st })
         io.to(roomId).emit('seek', { currentTime, serverTime: st })
       }
+    })
+
+    socket.on('set-room-name', (roomId: string, roomName: string) => {
+      const room = getRoom(roomId)
+      if (!room || room.hostSocketId !== socket.id) return
+      setRoomName(roomId, roomName ?? '')
+      io.to(roomId).emit('room-name-changed', { roomName: room.roomName })
     })
 
     socket.on('disconnect', () => {

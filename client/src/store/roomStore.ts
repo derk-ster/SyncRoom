@@ -6,11 +6,13 @@ import { create } from 'zustand'
  */
 export interface RoomState {
   roomId: string | null
+  roomName: string
   isHost: boolean
   playing: boolean
   currentTime: number
   lastSyncAt: number | null
   setRoom: (roomId: string, isHost: boolean) => void
+  setRoomName: (roomName: string) => void
   setPlayback: (playing: boolean, currentTime: number, lastSyncAt?: number) => void
   setHost: (isHost: boolean) => void
   leaveRoom: () => void
@@ -18,13 +20,16 @@ export interface RoomState {
 
 export const useRoomStore = create<RoomState>((set) => ({
   roomId: null,
+  roomName: '',
   isHost: false,
   playing: false,
   currentTime: 0,
   lastSyncAt: null,
 
   setRoom: (roomId, isHost) =>
-    set({ roomId, isHost, playing: false, currentTime: 0, lastSyncAt: null }),
+    set({ roomId, roomName: '', isHost, playing: false, currentTime: 0, lastSyncAt: null }),
+
+  setRoomName: (roomName) => set({ roomName }),
 
   setPlayback: (playing, currentTime, lastSyncAt) =>
     set((s) => ({
@@ -38,6 +43,7 @@ export const useRoomStore = create<RoomState>((set) => ({
   leaveRoom: () =>
     set({
       roomId: null,
+      roomName: '',
       isHost: false,
       playing: false,
       currentTime: 0,

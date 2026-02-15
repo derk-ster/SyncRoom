@@ -20,6 +20,7 @@ export function createRoom(roomId: string, hostSocketId: string): RoomData {
     hostSocketId,
     guestSocketIds: new Set(),
     playback: defaultPlayback(),
+    roomName: '',
   }
   rooms.set(roomId, room)
   return room
@@ -90,4 +91,11 @@ export function promoteGuestToHost(roomId: string): string | null {
 
 export function getActiveRoomIds(): string[] {
   return Array.from(rooms.keys())
+}
+
+export function setRoomName(roomId: string, roomName: string): RoomData | undefined {
+  const room = rooms.get(roomId)
+  if (!room) return undefined
+  room.roomName = roomName ?? ''
+  return room
 }

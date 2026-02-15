@@ -14,6 +14,7 @@ export interface RoomData {
   hostSocketId: string
   guestSocketIds: Set<string>
   playback: PlaybackState
+  roomName: string
 }
 
 export type SyncEvent = 

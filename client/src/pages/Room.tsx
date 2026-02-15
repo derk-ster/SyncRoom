@@ -13,17 +13,40 @@ import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 
 const DEMO_VIDEO_URL = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
 
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 export default function Room() {
   const { roomId } = useParams<{ roomId: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const isHost = searchParams.get('host') === '1'
-  const { setRoom, leaveRoom, playing, currentTime, setPlayback, setHost } = useRoomStore()
-  const { createRoom, joinRoom, leaveRoom: socketLeaveRoom, emitPlay, emitPause, emitSeek, connected } = useSocket()
+  const { setRoom, leaveRoom, playing, currentTime, lastSyncAt, roomName, setRoomName, setPlayback, setHost } = useRoomStore()
+  const { createRoom, joinRoom, leaveRoom: socketLeaveRoom, emitPlay, emitPause, emitSeek, emitSetRoomName, connected } = useSocket()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joining, setJoining] = useState(true)
+  const [copied, setCopied] = useState<'link' | 'id' | null>(null)
+  const [displayTime, setDisplayTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [isSharing, setIsSharing] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [volume, setVolume] = useState(1)
+  const [editingRoomName, setEditingRoomName] = useState(false)
+  const [roomNameInput, setRoomNameInput] = useState('')
+  const shareStreamRef = useRef<MediaStream | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const hasInitiallyJoined = useRef(false)
+
+  useEffect(() => {
+    if (copied === null) return
+    const t = setTimeout(() => setCopied(null), 2000)
+    return () => clearTimeout(t)
+  }, [copied])
 
   // Set room in store and join/create via socket
   useEffect(() => {
@@ -47,7 +70,7 @@ export default function Room() {
 
     if (!isHost) {
       hasInitiallyJoined.current = false
-      joinRoom(roomId, (ok, playback) => {
+      joinRoom(roomId, (ok, playback, name) => {
         setJoining(false)
         hasInitiallyJoined.current = true
         if (!ok) {
@@ -55,6 +78,7 @@ export default function Room() {
           return
         }
         setRoom(roomId, false)
+        if (name !== undefined) setRoomName(name ?? '')
         if (playback) {
           setPlayback(playback.playing, playback.currentTime, playback.serverTime)
         }
@@ -77,7 +101,7 @@ export default function Room() {
       if (roomId && roomId !== 'create') socketLeaveRoom(roomId)
       leaveRoom()
     }
-  }, [roomId, isHost, createRoom, joinRoom, socketLeaveRoom, setRoom, leaveRoom, navigate, setPlayback])
+  }, [roomId, isHost, createRoom, joinRoom, socketLeaveRoom, setRoom, setRoomName, leaveRoom, navigate, setPlayback])
 
   // Apply playback state to video element (sync from store)
   useEffect(() => {
@@ -89,6 +113,43 @@ export default function Room() {
     if (playing) video.play().catch(() => {})
     else video.pause()
   }, [playing, currentTime])
+
+  // Live time display: host from video, guest extrapolates when playing
+  useEffect(() => {
+    const video = videoRef.current
+    if (isHost && video) {
+      const onTimeUpdate = () => setDisplayTime(video.currentTime)
+      video.addEventListener('timeupdate', onTimeUpdate)
+      setDisplayTime(video.currentTime)
+      return () => video.removeEventListener('timeupdate', onTimeUpdate)
+    }
+  }, [isHost])
+
+  useEffect(() => {
+    if (isHost) return
+    if (!playing || lastSyncAt == null) {
+      setDisplayTime(currentTime)
+      return
+    }
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - lastSyncAt) / 1000
+      setDisplayTime(currentTime + elapsed)
+    }, 100)
+    return () => clearInterval(interval)
+  }, [isHost, playing, currentTime, lastSyncAt])
+
+  useEffect(() => {
+    setDisplayTime(currentTime)
+  }, [currentTime])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const onLoadedMetadata = () => setDuration(video.duration)
+    video.addEventListener('loadedmetadata', onLoadedMetadata)
+    if (video.duration && !Number.isNaN(video.duration)) setDuration(video.duration)
+    return () => video.removeEventListener('loadedmetadata', onLoadedMetadata)
+  }, [])
 
   // Socket listeners: play, pause, seek, host-changed
   useEffect(() => {
@@ -111,12 +172,16 @@ export default function Room() {
     const onHostChanged = (payload: { newHostSocketId: string }) => {
       setHost(socket.id === payload.newHostSocketId)
     }
+    const onRoomNameChanged = (payload: { roomName: string }) => {
+      setRoomName(payload.roomName)
+    }
 
     socket.on('play', onPlay)
     socket.on('pause', onPause)
     socket.on('seek', onSeek)
     socket.on('drift-correction', onDriftCorrection)
     socket.on('host-changed', onHostChanged)
+    socket.on('room-name-changed', onRoomNameChanged)
 
     return () => {
       socket.off('play', onPlay)
@@ -124,8 +189,9 @@ export default function Room() {
       socket.off('seek', onSeek)
       socket.off('drift-correction', onDriftCorrection)
       socket.off('host-changed', onHostChanged)
+      socket.off('room-name-changed', onRoomNameChanged)
     }
-  }, [roomId, playing, setPlayback, setHost])
+  }, [roomId, playing, setPlayback, setHost, setRoomName])
 
   const handlePlayPause = () => {
     const video = videoRef.current
@@ -152,6 +218,83 @@ export default function Room() {
   }
 
   const handleLeave = () => navigate('/')
+
+  const handleShareScreen = async () => {
+    const video = videoRef.current
+    if (!video) return
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      shareStreamRef.current?.getTracks().forEach((t) => t.stop())
+      shareStreamRef.current = stream
+      video.srcObject = stream
+      video.src = ''
+      setIsSharing(true)
+    } catch (err) {
+      console.error('Share screen failed:', err)
+    }
+  }
+
+  const handleStopSharing = () => {
+    const video = videoRef.current
+    shareStreamRef.current?.getTracks().forEach((t) => t.stop())
+    shareStreamRef.current = null
+    if (video) {
+      video.srcObject = null
+      video.src = DEMO_VIDEO_URL
+    }
+    setIsSharing(false)
+  }
+
+  const handleFullscreen = () => {
+    const container = containerRef.current
+    if (!container) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      container.requestFullscreen()
+    }
+  }
+
+  const handleVolumeToggle = () => {
+    const video = videoRef.current
+    if (!video) return
+    if (isMuted) {
+      video.muted = false
+      video.volume = volume
+      setIsMuted(false)
+    } else {
+      video.muted = true
+      setIsMuted(true)
+    }
+  }
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value)
+    const video = videoRef.current
+    if (video) {
+      video.volume = v
+      video.muted = false
+      setIsMuted(false)
+    }
+    setVolume(v)
+  }
+
+  const displayRoomName = roomName.trim() || roomId
+
+  const startEditingRoomName = () => {
+    if (!isHost) return
+    setRoomNameInput(displayRoomName)
+    setEditingRoomName(true)
+  }
+
+  const saveRoomName = () => {
+    const trimmed = roomNameInput.trim()
+    if (isHost && roomId && trimmed) {
+      emitSetRoomName(roomId, trimmed)
+      setRoomName(trimmed)
+    }
+    setEditingRoomName(false)
+  }
 
   if (!roomId) return null
 
@@ -188,21 +331,64 @@ export default function Room() {
 
       <header className="flex items-center justify-between p-4 border-b border-white/10">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-semibold text-[var(--color-text)]">Room: {roomId}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-[var(--color-text)]">Room:</span>
+            {editingRoomName ? (
+              <input
+                type="text"
+                value={roomNameInput}
+                onChange={(e) => setRoomNameInput(e.target.value)}
+                onBlur={saveRoomName}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveRoomName()
+                  if (e.key === 'Escape') setEditingRoomName(false)
+                }}
+                autoFocus
+                className="font-semibold text-[var(--color-text)] bg-white/10 border border-white/20 rounded px-2 py-0.5 min-w-[120px] focus:outline-none focus:border-[var(--color-accent)]"
+              />
+            ) : (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={startEditingRoomName}
+                onDoubleClick={startEditingRoomName}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') startEditingRoomName() }}
+                className={`font-semibold text-[var(--color-text)] ${isHost ? 'cursor-pointer hover:underline focus:outline-none focus:underline' : ''}`}
+                title={isHost ? 'Click or double-click to rename' : undefined}
+              >
+                {displayRoomName}
+              </span>
+            )}
+          </div>
           <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-[var(--color-text-muted)]">
             {isHost ? 'Host' : 'Guest'}
           </span>
           {isHost && (
-            <button
-              type="button"
-              onClick={() => {
-                const url = `${window.location.origin}/room/${roomId}`
-                navigator.clipboard.writeText(url).then(() => { /* optional: toast */ })
-              }}
-              className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
-            >
-              Copy room link
-            </button>
+            <>
+              <motion.button
+                type="button"
+                onClick={() => {
+                  const url = `${window.location.origin}/room/${roomId}`
+                  navigator.clipboard.writeText(url).then(() => setCopied('link'))
+                }}
+                whileTap={{ scale: 0.92 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+              >
+                {copied === 'link' ? 'Copied!' : 'Copy room link'}
+              </motion.button>
+              <motion.button
+                type="button"
+                onClick={() => {
+                  if (roomId) navigator.clipboard.writeText(roomId).then(() => setCopied('id'))
+                }}
+                whileTap={{ scale: 0.92 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+              >
+                {copied === 'id' ? 'Copied!' : 'Copy room ID'}
+              </motion.button>
+            </>
           )}
           {!connected && <span className="text-xs text-amber-400">Reconnecting…</span>}
         </div>
@@ -218,6 +404,7 @@ export default function Room() {
       <main className="flex-1 flex flex-col items-center justify-center p-6">
         <AnimatePresence mode="wait">
           <motion.div
+            ref={containerRef}
             key="room-content"
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -239,32 +426,119 @@ export default function Room() {
           <div className="p-4 flex flex-col gap-4">
             {isHost ? (
               <>
-                <div className="flex items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={handlePlayPause}
-                    className="px-6 py-2 rounded-xl font-medium bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-white"
-                  >
-                    {playing ? 'Pause' : 'Play'}
-                  </button>
-                  <span className="text-sm text-[var(--color-text-muted)]">
-                    {currentTime.toFixed(1)}s
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleShareScreen}
+                      disabled={isSharing}
+                      className="text-sm px-4 py-2 rounded-xl border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Share
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePlayPause}
+                      className="px-6 py-2 rounded-xl font-medium bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-white"
+                    >
+                      {playing ? 'Pause' : 'Play'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStopSharing}
+                      disabled={!isSharing}
+                      className="text-sm px-4 py-2 rounded-xl border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Stop sharing
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm tabular-nums text-[var(--color-text-muted)] min-w-[4ch]">
+                      {formatTime(displayTime)}{duration > 0 ? ` / ${formatTime(duration)}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleFullscreen}
+                      className="p-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+                      title="Fullscreen"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleVolumeToggle}
+                        className="p-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+                        title={isMuted ? 'Unmute' : 'Mute'}
+                      >
+                        {isMuted ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                        )}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={isMuted ? 0 : volume}
+                        onChange={handleVolumeChange}
+                        className="w-16 h-1.5 rounded-full appearance-none bg-white/10 accent-[var(--color-accent)]"
+                      />
+                    </div>
+                  </div>
                 </div>
                 <input
                   type="range"
                   min={0}
-                  max={3600}
+                  max={duration > 0 ? duration : 3600}
                   step={0.1}
-                  value={Math.min(currentTime, 3600)}
+                  value={Math.min(currentTime, duration > 0 ? duration : 3600)}
                   onChange={handleSeek}
                   className="w-full h-2 rounded-full appearance-none bg-white/10 accent-[#6366f1]"
                 />
               </>
             ) : (
-              <p className="text-sm text-[var(--color-text-muted)]">
-                {playing ? 'Playing' : 'Paused'} at {currentTime.toFixed(1)}s — synced with host.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  {playing ? 'Playing' : 'Paused'} — synced with host.
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm tabular-nums text-[var(--color-text-muted)]">
+                    {formatTime(displayTime)}{duration > 0 ? ` / ${formatTime(duration)}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleFullscreen}
+                    className="p-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+                    title="Fullscreen"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVolumeToggle}
+                    className="p-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                  >
+                    {isMuted ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                    )}
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={isMuted ? 0 : volume}
+                    onChange={handleVolumeChange}
+                    className="w-16 h-1.5 rounded-full appearance-none bg-white/10 accent-[var(--color-accent)]"
+                  />
+                </div>
+              </div>
             )}
           </div>
           </motion.div>

@@ -23,11 +23,11 @@ export function useSocket() {
   }, [])
 
   const joinRoom = useCallback(
-    (roomId: string, onJoined: (ok: boolean, playback?: { playing: boolean; currentTime: number; serverTime: number }) => void) => {
+    (roomId: string, onJoined: (ok: boolean, playback?: { playing: boolean; currentTime: number; serverTime: number }, roomName?: string) => void) => {
       const s = getSocket()
       if (!s) return
-      s.emit('join-room', roomId, (ok: boolean, state?: { playing: boolean; currentTime: number; lastSyncAt: number; serverTime: number }) => {
-        if (ok && state) onJoined(true, { playing: state.playing, currentTime: state.currentTime, serverTime: state.serverTime })
+      s.emit('join-room', roomId, (ok: boolean, state?: { playing: boolean; currentTime: number; lastSyncAt: number; serverTime: number }, roomName?: string) => {
+        if (ok && state) onJoined(true, { playing: state.playing, currentTime: state.currentTime, serverTime: state.serverTime }, roomName)
         else onJoined(ok)
       })
     },
@@ -51,6 +51,10 @@ export function useSocket() {
     getSocket()?.emit('seek', currentTime)
   }, [])
 
+  const emitSetRoomName = useCallback((roomId: string, roomName: string) => {
+    getSocket()?.emit('set-room-name', roomId, roomName)
+  }, [])
+
   return {
     socket,
     connected: !!socket?.connected,
@@ -60,5 +64,6 @@ export function useSocket() {
     emitPlay,
     emitPause,
     emitSeek,
+    emitSetRoomName,
   }
 }
