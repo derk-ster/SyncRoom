@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SyncRoom — Watch in Sync</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="bg-gradient" aria-hidden="true"></div>
+
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo">SyncRoom</a>
+      <p class="tagline">Watch together, in perfect sync</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="hero">
+      <h1 class="hero-title">One host. Everyone in sync.</h1>
+      <p class="hero-subtitle">
+        Create a room, share the link, and control playback from one device. No streaming—just state sync across all screens.
+      </p>
+    </section>
+
+    <section class="actions">
+      <div class="panel panel-create">
+        <h2 class="panel-title">Create a room</h2>
+        <p class="panel-desc">You’ll be the host and control play, pause, and seek for everyone.</p>
+        <a href="#" class="btn btn-primary" id="create-room">Create Room</a>
+      </div>
+
+      <div class="panel panel-join">
+        <h2 class="panel-title">Join a room</h2>
+        <p class="panel-desc">Enter the room ID your host shared with you.</p>
+        <div class="join-row">
+          <input
+            type="text"
+            id="room-id"
+            class="input-room"
+            placeholder="Room ID"
+            autocomplete="off"
+          />
+          <button type="button" class="btn btn-secondary" id="join-room">Join</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>SyncRoom — Real-time playback sync. No video streaming.</p>
+  </footer>
+
+  <!-- Phase 1: no JS behavior; buttons/links are placeholders -->
+</body>
+</html>

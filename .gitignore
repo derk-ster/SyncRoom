@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+client/dist/
+server/dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Vite
+*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional
+coverage/
+.nyc_output/
