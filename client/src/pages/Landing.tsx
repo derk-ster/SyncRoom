@@ -1,12 +1,46 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { MouseLight } from '@/components/effects/MouseLight'
 import { useParticleBurst } from '@/components/effects/ParticleBurst'
 import { FallingCircles } from '@/components/effects/FallingCircles'
 import { GradientBorderCard } from '@/components/ui/GradientBorderCard'
 import { createRoomViaApi } from '@/lib/api'
 
+const FADE_IN_DURATION = 2
+const STAGGER_CHILDREN = 0.12
+const UNDERLINE_DURATION = 0.6
+const UNDERLINE_DELAY = FADE_IN_DURATION
+const SYNC_JUMP_DELAY = UNDERLINE_DELAY + UNDERLINE_DURATION
+const SYNC_JUMP_DURATION = 0.4
+
 const JOIN_ROOM_ID_KEY = 'syncroom-join-room-id'
+
+const DESC_WORDS =
+  'Create a room, share the link, and control playback from one device. No streaming—just state sync across all screens.'.split(
+    /\s+/
+  )
+
+/** Single word that jumps (0 → -6 → 0) when hovered; only this word animates. */
+function HoverJumpWord({ word }: { word: string }) {
+  const [jump, setJump] = useState(false)
+  return (
+    <motion.span
+      className="inline-block cursor-default whitespace-pre"
+      initial={{ y: 0 }}
+      animate={{ y: jump ? [0, -6, 0] : 0 }}
+      transition={{
+        duration: SYNC_JUMP_DURATION,
+        times: jump ? [0, 0.4, 1] : undefined,
+        ease: [0.34, 1.56, 0.64, 1],
+      }}
+      onHoverStart={() => setJump(true)}
+      onAnimationComplete={() => setJump(false)}
+    >
+      {word}
+    </motion.span>
+  )
+}
 
 /** Format room ID as XXXX-XXXX (2 groups of 4 alphanumeric chars). */
 function formatRoomIdInput(raw: string): string {
@@ -87,7 +121,12 @@ export default function Landing() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative">
+    <motion.div
+      className="min-h-screen flex flex-col relative"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: FADE_IN_DURATION, ease: 'easeOut' }}
+    >
       <div
         className="fixed inset-0 -z-10 bg-sync-bg"
         style={{
@@ -106,48 +145,137 @@ export default function Landing() {
         aria-hidden
       />
 
-      <header className="py-6 px-4 text-center relative z-10">
+      <motion.header
+        className="py-6 px-4 text-center relative z-10"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.1, ease: 'easeOut' }}
+      >
         <a href="/" className="text-xl font-bold tracking-tight text-[var(--color-text)]">
           SyncRoom
         </a>
         <p className="text-sm text-[var(--color-text-muted)] mt-1">Watch together, in perfect sync</p>
-      </header>
+      </motion.header>
 
       <main className="flex-1 px-4 py-8 max-w-[720px] w-full mx-auto relative z-10">
-        <section className="text-center mb-12">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight mb-4">
-            One host. Everyone in sync.
-          </h1>
-          <p className="text-base text-[var(--color-text-muted)] max-w-[480px] mx-auto leading-relaxed">
-            Create a room, share the link, and control playback from one device. No streaming—just
-            state sync across all screens.
-          </p>
-        </section>
+        <motion.section
+          className="text-center mb-12"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.25, ease: 'easeOut' }}
+        >
+          <div className="inline-block mb-4">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight">
+              One host. Everyone in{' '}
+              <motion.span
+                className="inline-block"
+                initial={{ y: 0 }}
+                animate={{ y: [0, -8, 0] }}
+                transition={{
+                  delay: SYNC_JUMP_DELAY,
+                  duration: SYNC_JUMP_DURATION,
+                  times: [0, 0.4, 1],
+                  ease: [0.34, 1.56, 0.64, 1],
+                }}
+              >
+                sync
+              </motion.span>
+              .
+            </h1>
+            <motion.div
+              className="h-0.5 w-full rounded-full bg-gradient-to-r from-transparent via-[#6366f1] to-transparent mt-1"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: UNDERLINE_DURATION, delay: UNDERLINE_DELAY, ease: 'easeOut' }}
+              style={{ transformOrigin: 'left' }}
+            />
+          </div>
+          <motion.p
+            className="text-base text-[var(--color-text-muted)] max-w-[480px] mx-auto leading-relaxed mt-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+          >
+            {DESC_WORDS.map((word, i) => (
+              <span key={i}>
+                <HoverJumpWord word={word} />
+                {i < DESC_WORDS.length - 1 ? ' ' : ''}
+              </span>
+            ))}
+          </motion.p>
+        </motion.section>
 
-        <section className="flex flex-col sm:flex-row gap-6">
-          <GradientBorderCard className="flex-1" innerClassName="p-8">
-            <h2 className="text-lg font-semibold mb-2">Create a room</h2>
-            <p className="text-sm text-[var(--color-text-muted)] mb-6 leading-normal">
-              You'll be the host and control play, pause, and seek for everyone.
-            </p>
-            {createError && (
-              <p className="text-sm text-red-400 mb-2">{createError}</p>
-            )}
-            <button
-              type="button"
-              onClick={handleCreateRoom}
-              disabled={isCreating}
-              className="px-6 py-3 rounded-xl font-medium bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-white shadow-lg shadow-[var(--color-glow)] hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isCreating ? 'Creating…' : 'Create Room'}
-            </button>
+        <motion.section
+          className="flex flex-col sm:flex-row gap-6 items-stretch"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.45 }}
+        >
+          <motion.div
+            className="flex-1"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.5, ease: 'easeOut' }}
+          >
+            <GradientBorderCard className="h-full" innerClassName="p-6 flex flex-col justify-between h-[220px]">
+            <div>
+              <div className="inline-block mb-2">
+                <h2 className="text-lg font-semibold">Create a room</h2>
+                <motion.div
+                  className="h-0.5 w-full rounded-full bg-gradient-to-r from-transparent via-[#6366f1] to-transparent mt-0.5"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ duration: UNDERLINE_DURATION, delay: UNDERLINE_DELAY, ease: 'easeOut' }}
+                  style={{ transformOrigin: 'left' }}
+                />
+              </div>
+              <p className="text-sm text-[var(--color-text-muted)] mb-4 leading-normal">
+                You'll be the host and control play, pause, and seek for everyone.
+              </p>
+              {createError && (
+                <p className="text-sm text-red-400 mb-2">{createError}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <motion.button
+                type="button"
+                onClick={handleCreateRoom}
+                disabled={isCreating}
+                className="px-6 py-3 rounded-xl font-medium bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-white shadow-lg shadow-[var(--color-glow)] hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:cursor-not-allowed w-full sm:w-auto disabled:opacity-70"
+                animate={isCreating ? { scale: [1, 1.02, 1], opacity: [0.9, 1, 0.9] } : {}}
+                transition={{ duration: 1.2, repeat: isCreating ? Infinity : 0, ease: 'easeInOut' }}
+              >
+                {isCreating ? 'Creating…' : 'Create Room'}
+              </motion.button>
+              <p className="text-sm text-[var(--color-text-muted)] leading-normal">
+                This will make you the host.
+              </p>
+            </div>
           </GradientBorderCard>
+          </motion.div>
 
-          <GradientBorderCard className="flex-1" innerClassName="p-8">
-            <h2 className="text-lg font-semibold mb-2">Join a room</h2>
-            <p className="text-sm text-[var(--color-text-muted)] mb-6 leading-normal">
-              Enter the room ID your host shared with you.
-            </p>
+          <motion.div
+            className="flex-1"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.5 + STAGGER_CHILDREN, ease: 'easeOut' }}
+          >
+            <GradientBorderCard className="h-full" innerClassName="p-6 flex flex-col justify-between h-[220px]">
+            <div>
+              <div className="inline-block mb-2">
+                <h2 className="text-lg font-semibold">Join a room</h2>
+                <motion.div
+                  className="h-0.5 w-full rounded-full bg-gradient-to-r from-transparent via-[#6366f1] to-transparent mt-0.5"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ duration: UNDERLINE_DURATION, delay: UNDERLINE_DELAY + STAGGER_CHILDREN, ease: 'easeOut' }}
+                  style={{ transformOrigin: 'left' }}
+                />
+              </div>
+              <p className="text-sm text-[var(--color-text-muted)] mb-4 leading-normal">
+                Enter the room ID your host shared with you.
+              </p>
+            </div>
             <div className="flex flex-col gap-2">
               <div className="flex gap-4 flex-wrap">
                 <input
@@ -176,12 +304,18 @@ export default function Landing() {
               </button>
             </div>
           </GradientBorderCard>
-        </section>
+          </motion.div>
+        </motion.section>
       </main>
 
-      <footer className="py-6 text-center text-sm text-[var(--color-text-muted)] relative z-10">
+      <motion.footer
+        className="py-6 text-center text-sm text-[var(--color-text-muted)] relative z-10"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.75, ease: 'easeOut' }}
+      >
         <p>SyncRoom — Real-time playback sync. No video streaming.</p>
-      </footer>
-    </div>
+      </motion.footer>
+    </motion.div>
   )
 }
