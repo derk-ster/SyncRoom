@@ -232,9 +232,6 @@ export default function Landing() {
               <p className="text-sm text-[var(--color-text-muted)] mb-4 leading-normal">
                 You'll be the host and control play, pause, and seek for everyone.
               </p>
-              {createError && (
-                <p className="text-sm text-red-400 mb-2">{createError}</p>
-              )}
             </div>
             <div className="flex flex-col gap-2">
               <motion.button
@@ -252,6 +249,11 @@ export default function Landing() {
               </p>
             </div>
           </GradientBorderCard>
+            {createError && (
+              <p className="text-sm text-red-400 mt-2" role="alert">
+                {createError}
+              </p>
+            )}
           </motion.div>
 
           <motion.div
