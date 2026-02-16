@@ -13,16 +13,27 @@ import { registerSocketHandlers } from './socket/handlers.js'
 import { startDriftCorrection } from './sync/driftCorrection.js'
 
 const PORT = Number(process.env.PORT) || 3001
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
+const CORS_ORIGIN_RAW = (process.env.CORS_ORIGIN || 'http://localhost:5173').trim()
+const CORS_ORIGINS = CORS_ORIGIN_RAW.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean)
 
 const app = express()
-app.use(cors({ origin: CORS_ORIGIN }))
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true)
+      const normalized = origin.replace(/\/+$/, '')
+      const allowed = CORS_ORIGINS.some((o) => o === normalized || o === origin)
+      cb(null, allowed ? origin : false)
+    },
+    credentials: false,
+  })
+)
 app.use(express.json())
 
 const httpServer = createServer(app)
 
 const io = new Server(httpServer, {
-  cors: { origin: CORS_ORIGIN },
+  cors: { origin: CORS_ORIGINS.length > 0 ? CORS_ORIGINS : ['http://localhost:5173'] },
   pingTimeout: 60000,
   pingInterval: 25000,
 })
@@ -49,4 +60,5 @@ app.get('/api/rooms/:roomId', (req, res) => {
 
 httpServer.listen(PORT, () => {
   console.log(`SyncRoom server listening on port ${PORT}`)
+  console.log(`CORS allowed origins: ${CORS_ORIGINS.join(', ') || '(none)'}`)
 })
