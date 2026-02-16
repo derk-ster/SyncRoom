@@ -102,9 +102,12 @@ export default function Landing() {
       const msg = err instanceof Error ? err.message : ''
       if (msg.startsWith('BACKEND_UNREACHABLE')) {
         const url = msg.includes('|') ? msg.split('|')[1]?.trim() ?? '' : ''
+        const isRender = /\.onrender\.com/i.test(url)
         setCreateError(
           url
-            ? `Cannot reach the server at ${url}. If this is on Vercel, set VITE_API_URL to your Render URL and redeploy (env vars are applied at build time).`
+            ? isRender
+              ? `Can't reach ${url}. Try again (Render may be waking). If it keeps failing, in Render set CORS_ORIGIN to your Vercel URL exactly (e.g. https://your-app.vercel.app, no trailing slash).`
+              : `Cannot reach the server at ${url}. Set VITE_API_URL in Vercel and redeploy, or run the backend locally (cd server && npm run dev).`
             : 'Cannot reach the server. Run the backend locally (cd server && npm run dev) or set VITE_API_URL in Vercel and redeploy.'
         )
       } else if (msg.startsWith('HTTP_')) {

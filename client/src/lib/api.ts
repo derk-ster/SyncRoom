@@ -23,7 +23,7 @@ export async function createRoomViaApi(): Promise<string> {
     const res = await fetch(`${API_URL}/api/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(30000),
     })
     if (!res.ok) throw new Error(`HTTP_${res.status}`)
     const data = (await res.json()) as CreateRoomResponse
@@ -40,10 +40,10 @@ export async function createRoomViaApi(): Promise<string> {
         /fetch|network|failed|connection|refused|abort|timeout/i.test(firstErr.message))
     if (isNetwork) {
       await wakeServer()
-      await new Promise((r) => setTimeout(r, 3000))
+      await new Promise((r) => setTimeout(r, 5000))
       try {
         return await doFetch()
-      } catch (retryErr) {
+      } catch {
         throw new Error(`BACKEND_UNREACHABLE|${API_URL}`)
       }
     }
