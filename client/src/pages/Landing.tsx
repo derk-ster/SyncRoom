@@ -206,13 +206,13 @@ export default function Landing() {
         </motion.section>
 
         <motion.section
-          className="flex flex-col sm:flex-row gap-6 items-stretch"
+          className={`flex flex-col sm:flex-row gap-6 items-stretch ${createError ? 'pb-10' : ''}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.45 }}
         >
           <motion.div
-            className="flex-1"
+            className="flex-1 relative"
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.5, ease: 'easeOut' }}
@@ -250,7 +250,10 @@ export default function Landing() {
             </div>
           </GradientBorderCard>
             {createError && (
-              <p className="text-sm text-red-400 mt-2" role="alert">
+              <p
+                className="absolute left-0 top-full mt-2 text-sm text-red-400 w-full sm:max-w-[min(100%,theme(maxWidth.5xl))]"
+                role="alert"
+              >
                 {createError}
               </p>
             )}
