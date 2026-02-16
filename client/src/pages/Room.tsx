@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRoomStore } from '@/store/roomStore'
 import { useSocket } from '@/hooks/useSocket'
 import { getSocket } from '@/lib/socket'
+import { wakeServer } from '@/lib/api'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 
 /**
@@ -69,10 +70,52 @@ export default function Room() {
       return
     }
 
-    if (isHost) {
-      hasInitiallyJoined.current = true
-      setRoom(roomId, true)
-      setJoining(false)
+    // Host claiming a room created via API, or guest joining: wake server then join via socket
+    if (isHost && roomId !== 'create') {
+      setJoinError(null)
+      setJoinWaitSeconds(0)
+      const waitInterval = setInterval(() => setJoinWaitSeconds((s) => s + 1), 1000)
+      joinWaitIntervalRef.current = waitInterval
+      const timeout = setTimeout(() => {
+        joinWaitIntervalRef.current && clearInterval(joinWaitIntervalRef.current)
+        joinWaitIntervalRef.current = null
+        setJoining((prev) => {
+          if (!prev) return prev
+          setJoinError('Connection timed out. Check your connection and try again.')
+          return false
+        })
+      }, 15000)
+      joinTimeoutRef.current = timeout
+      const clearJoinTimers = () => {
+        if (joinTimeoutRef.current) {
+          clearTimeout(joinTimeoutRef.current)
+          joinTimeoutRef.current = null
+        }
+        if (joinWaitIntervalRef.current) {
+          clearInterval(joinWaitIntervalRef.current)
+          joinWaitIntervalRef.current = null
+        }
+      }
+      const onJoined = (ok: boolean, playback?: { playing: boolean; currentTime: number; serverTime: number }, name?: string, count?: number) => {
+        clearJoinTimers()
+        setJoining(false)
+        hasInitiallyJoined.current = true
+        if (!ok) {
+          setJoinError('Room not found or invalid.')
+          return
+        }
+        setRoom(roomId, true)
+        if (name !== undefined) setRoomName(name ?? '')
+        if (count != null) setParticipantCount(count)
+        if (playback) setPlayback(playback.playing, playback.currentTime, playback.serverTime)
+      }
+      const doJoin = () => joinRoom(roomId, onJoined)
+      joinOnConnectRef.current = doJoin
+      wakeServer().then(() => {
+        const socket = getSocket()
+        if (socket?.connected) doJoin()
+        else socket?.once('connect', doJoin)
+      })
       return
     }
 
@@ -80,9 +123,7 @@ export default function Room() {
       setJoinError(null)
       hasInitiallyJoined.current = false
       setJoinWaitSeconds(0)
-      const waitInterval = setInterval(() => {
-        setJoinWaitSeconds((s) => s + 1)
-      }, 1000)
+      const waitInterval = setInterval(() => setJoinWaitSeconds((s) => s + 1), 1000)
       joinWaitIntervalRef.current = waitInterval
       const timeout = setTimeout(() => {
         joinWaitIntervalRef.current && clearInterval(joinWaitIntervalRef.current)
@@ -115,18 +156,15 @@ export default function Room() {
         setRoom(roomId, false)
         if (name !== undefined) setRoomName(name ?? '')
         if (count != null) setParticipantCount(count)
-        if (playback) {
-          setPlayback(playback.playing, playback.currentTime, playback.serverTime)
-        }
+        if (playback) setPlayback(playback.playing, playback.currentTime, playback.serverTime)
       }
       const doJoin = () => joinRoom(roomId, onJoined)
       joinOnConnectRef.current = doJoin
-      const socket = getSocket()
-      if (socket?.connected) {
-        doJoin()
-      } else {
-        socket?.once('connect', doJoin)
-      }
+      wakeServer().then(() => {
+        const socket = getSocket()
+        if (socket?.connected) doJoin()
+        else socket?.once('connect', doJoin)
+      })
     }
 
     const socket = getSocket()
@@ -526,8 +564,9 @@ export default function Room() {
             type="button"
             onClick={handleLeave}
             className="text-sm px-4 py-2 rounded-lg border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5 transition-colors"
+            title={isHost ? 'Leave and end the room for everyone' : 'Leave the room'}
           >
-            Leave
+            {isHost ? 'Leave and cancel room' : 'Leave'}
           </button>
         </div>
       </header>

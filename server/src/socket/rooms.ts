@@ -26,6 +26,19 @@ export function createRoom(roomId: string, hostSocketId: string): RoomData {
   return room
 }
 
+/** Create a room with no host yet (for REST API). First socket to claim becomes host. */
+export function createRoomPending(roomId: string): RoomData {
+  const room: RoomData = {
+    roomId,
+    hostSocketId: '', // empty = pending claim
+    guestSocketIds: new Set(),
+    playback: defaultPlayback(),
+    roomName: '',
+  }
+  rooms.set(roomId, room)
+  return room
+}
+
 export function getRoom(roomId: string): RoomData | undefined {
   return rooms.get(roomId)
 }
@@ -33,15 +46,20 @@ export function getRoom(roomId: string): RoomData | undefined {
 export function joinRoom(roomId: string, socketId: string): RoomData | null {
   const room = rooms.get(roomId)
   if (!room) return null
+  if (room.hostSocketId === '') {
+    room.hostSocketId = socketId
+    return room
+  }
   if (socketId === room.hostSocketId) return room
   room.guestSocketIds.add(socketId)
   return room
 }
 
+/** When the host leaves, the room is deleted and its ID can be generated again for a new room. */
 export function leaveRoom(roomId: string, socketId: string): RoomData | null {
   const room = rooms.get(roomId)
   if (!room) return null
-  if (socketId === room.hostSocketId) {
+  if (room.hostSocketId && socketId === room.hostSocketId) {
     rooms.delete(roomId)
     return null
   }

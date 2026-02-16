@@ -7,6 +7,8 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
+import { generateSimpleRoomId } from './lib/roomId.js'
+import { createRoomPending, getRoom } from './socket/rooms.js'
 import { registerSocketHandlers } from './socket/handlers.js'
 import { startDriftCorrection } from './sync/driftCorrection.js'
 
@@ -30,6 +32,19 @@ startDriftCorrection(io)
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'syncroom-api' })
+})
+
+/** Create a room via REST (e.g. to wake server on Render, then client claims via Socket.io join-room). */
+app.post('/api/rooms', (_req, res) => {
+  const roomId = generateSimpleRoomId()
+  createRoomPending(roomId)
+  res.json({ roomId })
+})
+
+/** Check if a room exists (optional wake + validation). */
+app.get('/api/rooms/:roomId', (req, res) => {
+  const room = getRoom(req.params.roomId)
+  res.json({ exists: !!room })
 })
 
 httpServer.listen(PORT, () => {

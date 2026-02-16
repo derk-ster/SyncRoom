@@ -2,11 +2,15 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { MouseLight } from '@/components/effects/MouseLight'
 import { useParticleBurst } from '@/components/effects/ParticleBurst'
+import { FallingCircles } from '@/components/effects/FallingCircles'
 import { GradientBorderCard } from '@/components/ui/GradientBorderCard'
+import { createRoomViaApi } from '@/lib/api'
 
-/** Format room ID with a dash every 4 alphanumeric chars (XXXX-XXXX-XXXX-XXXX). */
+const JOIN_ROOM_ID_KEY = 'syncroom-join-room-id'
+
+/** Format room ID as XXXX-XXXX (2 groups of 4 alphanumeric chars). */
 function formatRoomIdInput(raw: string): string {
-  const alphanumeric = raw.replace(/\W/g, '').slice(0, 16)
+  const alphanumeric = raw.replace(/\W/g, '').slice(0, 8)
   const parts: string[] = []
   for (let i = 0; i < alphanumeric.length; i += 4) {
     parts.push(alphanumeric.slice(i, i + 4))
@@ -20,8 +24,23 @@ function formatRoomIdInput(raw: string): string {
  */
 export default function Landing() {
   const navigate = useNavigate()
-  const [roomIdInput, setRoomIdInput] = useState('')
+  const [roomIdInput, setRoomIdInput] = useState(() => {
+    try {
+      return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(JOIN_ROOM_ID_KEY) ?? '' : ''
+    } catch {
+      return ''
+    }
+  })
   const { canvasRef, burst } = useParticleBurst()
+
+  useEffect(() => {
+    try {
+      if (roomIdInput) sessionStorage.setItem(JOIN_ROOM_ID_KEY, roomIdInput)
+      else sessionStorage.removeItem(JOIN_ROOM_ID_KEY)
+    } catch {
+      /* ignore */
+    }
+  }, [roomIdInput])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -35,9 +54,21 @@ export default function Landing() {
     return () => window.removeEventListener('resize', resize)
   }, [canvasRef])
 
-  const handleCreateRoom = (e: React.MouseEvent) => {
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+
+  const handleCreateRoom = async (e: React.MouseEvent) => {
     burst(e.clientX, e.clientY)
-    navigate('/room/create?host=1')
+    setCreateError(null)
+    setIsCreating(true)
+    try {
+      const roomId = await createRoomViaApi()
+      navigate(`/room/${roomId}?host=1`)
+    } catch (err) {
+      setCreateError('Could not create room. Check your connection and try again.')
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   const handleRoomIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,6 +80,10 @@ export default function Landing() {
     if (!value) return
     if (e) burst(e.clientX, e.clientY)
     navigate(`/room/${value}`)
+  }
+
+  const handleClearRoomId = () => {
+    setRoomIdInput('')
   }
 
   return (
@@ -63,6 +98,7 @@ export default function Landing() {
           `,
         }}
       />
+      <FallingCircles />
       <MouseLight size={420} opacity={0.35} className="z-0" />
       <canvas
         ref={canvasRef}
@@ -94,12 +130,16 @@ export default function Landing() {
             <p className="text-sm text-[var(--color-text-muted)] mb-6 leading-normal">
               You'll be the host and control play, pause, and seek for everyone.
             </p>
+            {createError && (
+              <p className="text-sm text-red-400 mb-2">{createError}</p>
+            )}
             <button
               type="button"
               onClick={handleCreateRoom}
-              className="px-6 py-3 rounded-xl font-medium bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-white shadow-lg shadow-[var(--color-glow)] hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              disabled={isCreating}
+              className="px-6 py-3 rounded-xl font-medium bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-white shadow-lg shadow-[var(--color-glow)] hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create Room
+              {isCreating ? 'Creating…' : 'Create Room'}
             </button>
           </GradientBorderCard>
 
@@ -108,22 +148,31 @@ export default function Landing() {
             <p className="text-sm text-[var(--color-text-muted)] mb-6 leading-normal">
               Enter the room ID your host shared with you.
             </p>
-            <div className="flex gap-4 flex-wrap">
-              <input
-                type="text"
-                value={roomIdInput}
-                onChange={handleRoomIdChange}
-                placeholder="XXXX-XXXX-XXXX-XXXX"
-                maxLength={19}
-                className="flex-1 min-w-[160px] px-4 py-3 rounded-xl bg-black/30 border border-[var(--color-surface-border)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors font-mono tracking-wider"
-                onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
-              />
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-4 flex-wrap">
+                <input
+                  type="text"
+                  value={roomIdInput}
+                  onChange={handleRoomIdChange}
+                  placeholder="XXXX-XXXX"
+                  maxLength={9}
+                  className="flex-1 min-w-[160px] px-4 py-3 rounded-xl bg-black/30 border border-[var(--color-surface-border)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors font-mono tracking-wider"
+                  onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
+                />
+                <button
+                  type="button"
+                  onClick={handleJoinRoom}
+                  className="px-6 py-3 rounded-xl font-medium bg-[var(--color-surface)] border border-[var(--color-surface-border)] text-[var(--color-text)] hover:bg-white/10 transition-colors"
+                >
+                  Join
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={handleJoinRoom}
-                className="px-6 py-3 rounded-xl font-medium bg-[var(--color-surface)] border border-[var(--color-surface-border)] text-[var(--color-text)] hover:bg-white/10 transition-colors"
+                onClick={handleClearRoomId}
+                className="self-start text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
               >
-                Join
+                Delete?
               </button>
             </div>
           </GradientBorderCard>

@@ -1,5 +1,7 @@
 /**
- * Generate a simple room ID: XXXX-XXXX-XXXX-XXXX (each char is letter or digit).
+ * Generate a simple room ID: XXXX-XXXX (2 groups of 4, each char is letter or digit).
+ * When a room ends and everyone leaves, the room is removed from memory; the same
+ * code can be generated again with the same probability as any other (no reservation).
  */
 
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -13,5 +15,5 @@ function segment(): string {
 }
 
 export function generateSimpleRoomId(): string {
-  return `${segment()}-${segment()}-${segment()}-${segment()}`
+  return `${segment()}-${segment()}`
 }
