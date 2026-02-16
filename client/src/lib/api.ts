@@ -19,25 +19,36 @@ export async function wakeServer(): Promise<void> {
 
 /** Create a room via REST. Server creates a pending room; client then joins via Socket.io to claim as host. */
 export async function createRoomViaApi(): Promise<string> {
-  let res: Response
-  try {
-    res = await fetch(`${API_URL}/api/rooms`, {
+  const doFetch = async (): Promise<string> => {
+    const res = await fetch(`${API_URL}/api/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(20000),
     })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    const name = err instanceof Error ? err.constructor?.name : ''
-    const isNetwork =
-      name === 'AbortError' || /fetch|network|failed|connection|refused|abort|timeout/i.test(message)
-    if (isNetwork) throw new Error('BACKEND_UNREACHABLE')
-    throw err
+    if (!res.ok) throw new Error(`HTTP_${res.status}`)
+    const data = (await res.json()) as CreateRoomResponse
+    if (!data?.roomId) throw new Error('INVALID_RESPONSE')
+    return data.roomId
   }
-  if (!res.ok) throw new Error(`HTTP_${res.status}`)
-  const data = (await res.json()) as CreateRoomResponse
-  if (!data?.roomId) throw new Error('INVALID_RESPONSE')
-  return data.roomId
+
+  try {
+    return await doFetch()
+  } catch (firstErr) {
+    const isNetwork =
+      firstErr instanceof Error &&
+      (firstErr.constructor?.name === 'AbortError' ||
+        /fetch|network|failed|connection|refused|abort|timeout/i.test(firstErr.message))
+    if (isNetwork) {
+      await wakeServer()
+      await new Promise((r) => setTimeout(r, 3000))
+      try {
+        return await doFetch()
+      } catch (retryErr) {
+        throw new Error(`BACKEND_UNREACHABLE|${API_URL}`)
+      }
+    }
+    throw firstErr instanceof Error ? firstErr : new Error(String(firstErr))
+  }
 }
 
 /** Check if a room exists (optional; also wakes server). */

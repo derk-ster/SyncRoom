@@ -100,9 +100,12 @@ export default function Landing() {
       navigate(`/room/${roomId}?host=1`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : ''
-      if (msg === 'BACKEND_UNREACHABLE') {
+      if (msg.startsWith('BACKEND_UNREACHABLE')) {
+        const url = msg.includes('|') ? msg.split('|')[1]?.trim() ?? '' : ''
         setCreateError(
-          'Cannot reach the server. Run the backend locally (see README: cd server && npm run dev) or, if deployed, set VITE_API_URL in Vercel to your backend URL.'
+          url
+            ? `Cannot reach the server at ${url}. If this is on Vercel, set VITE_API_URL to your Render URL and redeploy (env vars are applied at build time).`
+            : 'Cannot reach the server. Run the backend locally (cd server && npm run dev) or set VITE_API_URL in Vercel and redeploy.'
         )
       } else if (msg.startsWith('HTTP_')) {
         setCreateError('Server error. Check that the backend is running and CORS allows this origin.')
