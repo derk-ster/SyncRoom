@@ -19,13 +19,24 @@ export async function wakeServer(): Promise<void> {
 
 /** Create a room via REST. Server creates a pending room; client then joins via Socket.io to claim as host. */
 export async function createRoomViaApi(): Promise<string> {
-  const res = await fetch(`${API_URL}/api/rooms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(15000),
-  })
-  if (!res.ok) throw new Error('Failed to create room')
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}/api/rooms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(15000),
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const name = err instanceof Error ? err.constructor?.name : ''
+    const isNetwork =
+      name === 'AbortError' || /fetch|network|failed|connection|refused|abort|timeout/i.test(message)
+    if (isNetwork) throw new Error('BACKEND_UNREACHABLE')
+    throw err
+  }
+  if (!res.ok) throw new Error(`HTTP_${res.status}`)
   const data = (await res.json()) as CreateRoomResponse
+  if (!data?.roomId) throw new Error('INVALID_RESPONSE')
   return data.roomId
 }
 

@@ -99,7 +99,16 @@ export default function Landing() {
       const roomId = await createRoomViaApi()
       navigate(`/room/${roomId}?host=1`)
     } catch (err) {
-      setCreateError('Could not create room. Check your connection and try again.')
+      const msg = err instanceof Error ? err.message : ''
+      if (msg === 'BACKEND_UNREACHABLE') {
+        setCreateError(
+          'Cannot reach the server. Run the backend locally (see README: cd server && npm run dev) or, if deployed, set VITE_API_URL in Vercel to your backend URL.'
+        )
+      } else if (msg.startsWith('HTTP_')) {
+        setCreateError('Server error. Check that the backend is running and CORS allows this origin.')
+      } else {
+        setCreateError('Could not create room. Check your connection and try again.')
+      }
     } finally {
       setIsCreating(false)
     }
@@ -110,9 +119,9 @@ export default function Landing() {
   }
 
   const handleJoinRoom = (e?: React.MouseEvent) => {
+    if (e) burst(e.clientX, e.clientY)
     const value = roomIdInput.trim()
     if (!value) return
-    if (e) burst(e.clientX, e.clientY)
     navigate(`/room/${value}`)
   }
 
@@ -294,7 +303,7 @@ export default function Landing() {
                 />
                 <button
                   type="button"
-                  onClick={handleJoinRoom}
+                  onClick={(e) => handleJoinRoom(e)}
                   className="px-6 py-3 rounded-xl font-medium bg-[var(--color-surface)] border border-[var(--color-surface-border)] text-[var(--color-text)] hover:bg-white/10 transition-colors"
                 >
                   Join

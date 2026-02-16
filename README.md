@@ -53,6 +53,19 @@ See [docs/FOLDER_STRUCTURE.md](docs/FOLDER_STRUCTURE.md) and [docs/ARCHITECTURE.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Render (backend) and Vercel (frontend) steps.
 
+### Why “Create room” fails and how to fix it
+
+You don’t need a separate API or API key. The app uses **this repo’s backend** (`server/`). “Could not create room” usually means the frontend can’t reach that backend.
+
+- **Local:** Run the backend in a second terminal: `cd server && npm run dev`. The client uses `http://localhost:3001` by default.
+- **Vercel (production):** The built app must call your live backend. In **Vercel**:
+  1. Open your project → **Settings** → **Environment Variables**.
+  2. Add **`VITE_API_URL`** = your backend URL (e.g. `https://your-app.onrender.com` from Render). Apply to Production (and Preview if you want).
+  3. **Redeploy** the frontend so the new value is baked into the build.
+  4. On **Render** (or wherever the backend runs), set **`CORS_ORIGIN`** = your Vercel URL (e.g. `https://your-project.vercel.app`).
+
+No API key is required; just the backend URL and CORS.
+
 ---
 
 ## Ordered action list (beginner → deployment)
