@@ -99,11 +99,37 @@ export function registerSocketHandlers(io: Server): void {
       io.to(roomId).emit('room-name-changed', { roomName: room.roomName })
     })
 
+    socket.on('get-room-guests', (roomId: string, callback?: (guestSocketIds: string[]) => void) => {
+      const room = getRoom(roomId)
+      if (!room || room.hostSocketId !== socket.id || typeof callback !== 'function') {
+        if (typeof callback === 'function') callback([])
+        return
+      }
+      callback(Array.from(room.guestSocketIds))
+    })
+
+    socket.on('screen-offer', (payload: { roomId: string; toSocketId: string; offer: object }) => {
+      io.to(payload.toSocketId).emit('screen-offer', { fromSocketId: socket.id, roomId: payload.roomId, offer: payload.offer })
+    })
+
+    socket.on('screen-answer', (payload: { roomId: string; toSocketId: string; answer: object }) => {
+      io.to(payload.toSocketId).emit('screen-answer', { fromSocketId: socket.id, roomId: payload.roomId, answer: payload.answer })
+    })
+
+    socket.on('screen-ice', (payload: { roomId: string; toSocketId: string; candidate: object }) => {
+      io.to(payload.toSocketId).emit('screen-ice', { fromSocketId: socket.id, roomId: payload.roomId, candidate: payload.candidate })
+    })
+
+    socket.on('screen-share-stopped', (roomId: string) => {
+      socket.to(roomId).emit('screen-share-stopped', { roomId })
+    })
+
     socket.on('disconnect', () => {
       const result = removeSocketFromAllRooms(socket.id)
       if (result) {
         const { room, roomId } = result
         const wasHost = room.hostSocketId === socket.id
+        if (wasHost) io.to(roomId).emit('screen-share-stopped', { roomId })
         if (wasHost && room.guestSocketIds.size > 0) {
           const newHostId = promoteGuestToHost(roomId)
           if (newHostId) {

@@ -44,6 +44,8 @@ export default function Room() {
   const [participantCount, setParticipantCount] = useState(0)
   const [joinWaitSeconds, setJoinWaitSeconds] = useState(0)
   const shareStreamRef = useRef<MediaStream | null>(null)
+  const hostPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const guestPeerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hasInitiallyJoined = useRef(false)
   const joinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -295,6 +297,75 @@ export default function Room() {
     }
   }, [roomId, playing, isHost, setPlayback, setHost, setRoomName])
 
+  // Screen share: host receives answer/ice; guest receives offer/ice/stopped
+  useEffect(() => {
+    const socket = getSocket()
+    const video = videoRef.current
+    if (!socket || !roomId) return
+
+    const onScreenOffer = async (payload: { fromSocketId: string; roomId: string; offer: RTCSessionDescriptionInit }) => {
+      if (isHost || !video) return
+      guestPeerConnectionRef.current?.close()
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+      guestPeerConnectionRef.current = pc
+      pc.ontrack = (e) => {
+        if (e.streams[0] && videoRef.current) {
+          videoRef.current.srcObject = e.streams[0]
+          videoRef.current.play().catch(() => {})
+        }
+      }
+      pc.onicecandidate = (e) => {
+        if (e.candidate) socket.emit('screen-ice', { roomId, toSocketId: payload.fromSocketId, candidate: e.candidate.toJSON() })
+      }
+      await pc.setRemoteDescription(new RTCSessionDescription(payload.offer))
+      const answer = await pc.createAnswer()
+      await pc.setLocalDescription(answer)
+      socket.emit('screen-answer', { roomId, toSocketId: payload.fromSocketId, answer })
+    }
+
+    const onScreenAnswer = async (payload: { fromSocketId: string; roomId: string; answer: RTCSessionDescriptionInit }) => {
+      if (!isHost) return
+      const pc = hostPeerConnectionsRef.current.get(payload.fromSocketId)
+      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(payload.answer))
+    }
+
+    const onScreenIce = async (payload: { fromSocketId: string; roomId: string; candidate: RTCIceCandidateInit }) => {
+      try {
+        if (isHost) {
+          const pc = hostPeerConnectionsRef.current.get(payload.fromSocketId)
+          if (pc && payload.candidate) await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
+        } else {
+          const pc = guestPeerConnectionRef.current
+          if (pc && payload.candidate) await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
+        }
+      } catch (err) {
+        console.error('addIceCandidate failed:', err)
+      }
+    }
+
+    const onScreenShareStopped = () => {
+      if (isHost) return
+      guestPeerConnectionRef.current?.close()
+      guestPeerConnectionRef.current = null
+      const v = videoRef.current
+      if (v) {
+        v.srcObject = null
+        v.src = DEMO_VIDEO_URL
+      }
+    }
+
+    socket.on('screen-offer', onScreenOffer)
+    socket.on('screen-answer', onScreenAnswer)
+    socket.on('screen-ice', onScreenIce)
+    socket.on('screen-share-stopped', onScreenShareStopped)
+    return () => {
+      socket.off('screen-offer', onScreenOffer)
+      socket.off('screen-answer', onScreenAnswer)
+      socket.off('screen-ice', onScreenIce)
+      socket.off('screen-share-stopped', onScreenShareStopped)
+    }
+  }, [roomId, isHost])
+
   const handlePlayPause = () => {
     const video = videoRef.current
     if (!video) return
@@ -323,7 +394,8 @@ export default function Room() {
 
   const handleShareScreen = async () => {
     const video = videoRef.current
-    if (!video) return
+    const socket = getSocket()
+    if (!video || !socket || !roomId) return
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
       shareStreamRef.current?.getTracks().forEach((t) => t.stop())
@@ -334,6 +406,23 @@ export default function Room() {
       await video.play()
       setPlayback(true, 0, Date.now())
       emitPlay(0)
+
+      socket.emit('get-room-guests', roomId, (guestSocketIds: string[]) => {
+        const track = stream.getVideoTracks()[0]
+        if (!track) return
+        guestSocketIds.forEach((toSocketId) => {
+          const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+          pc.addTrack(track, stream)
+          hostPeerConnectionsRef.current.set(toSocketId, pc)
+          pc.onicecandidate = (e) => {
+            if (e.candidate) socket.emit('screen-ice', { roomId, toSocketId, candidate: e.candidate.toJSON() })
+          }
+          pc.createOffer().then((offer) => {
+            pc.setLocalDescription(offer)
+            socket.emit('screen-offer', { roomId, toSocketId, offer })
+          })
+        })
+      })
     } catch (err) {
       console.error('Share screen failed:', err)
     }
@@ -341,8 +430,12 @@ export default function Room() {
 
   const handleStopSharing = () => {
     const video = videoRef.current
+    const socket = getSocket()
     shareStreamRef.current?.getTracks().forEach((t) => t.stop())
     shareStreamRef.current = null
+    hostPeerConnectionsRef.current.forEach((pc) => pc.close())
+    hostPeerConnectionsRef.current.clear()
+    if (roomId) socket?.emit('screen-share-stopped', roomId)
     if (video) {
       video.srcObject = null
       video.src = DEMO_VIDEO_URL
